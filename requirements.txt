@@ -1,0 +1,12 @@
+backoff==1.4.3
+certifi==2017.7.27.1
+chardet==3.0.4
+configobj==5.0.6
+docutils==0.14
+idna==2.6
+lockfile==0.12.2
+python-daemon==2.1.2
+requests==2.18.4
+schedule==0.4.3
+six==1.10.0
+urllib3==1.22
