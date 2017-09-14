@@ -14,30 +14,15 @@ import schedule
 import time
 import daemon
 import signal
-import hashlib
 import datetime
 
 urllib3.disable_warnings()  # required to suppress ssl warning for urllib3 (requests uses urllib3)
 signal.signal(signal.SIGINT, signal.default_int_handler)  # ensure we correctly handle all keyboard interrupts
 
-# TODO maybe save all of json to config.ini then search this for hash?''
-# TODO look at archiving previous wallpapers, before overwrite?
-# TODO last_run not working
-# TODO add in kodi support, solution for refresh of wallpaper or issue systemctl
-# TODO support for multiple country downloads, possibly with option for preferred image to set as wallpaper?
-
-
-def md5(filename):
-
-    hash_md5 = hashlib.md5()
-
-    with open(filename, "rb") as f:
-
-        for chunk in iter(lambda: f.read(4096), b""):
-
-            hash_md5.update(chunk)
-
-    return hash_md5.hexdigest()
+# TODO regex for copyright
+# TODO looks like hashes do not work, different hashes for same image :-(, maybe look at filename?
+# TODO put back startdate thing from metadata, used instead of datenow and pass to downloader function
+# TODO look at multiple images per country by specfying the 'num', needs a config.ini entry to define this
 
 
 def create_config():
@@ -69,7 +54,11 @@ def app_logging():
     app_logger.addHandler(app_rotatingfilehandler)
 
     # set level of logging from config
-    if log_level == "INFO":
+    if log_level == "DEBUG":
+
+        app_logger.setLevel(logging.DEBUG)
+
+    elif log_level == "INFO":
 
         app_logger.setLevel(logging.INFO)
 
@@ -77,7 +66,7 @@ def app_logging():
 
         app_logger.setLevel(logging.WARNING)
 
-    elif log_level == "exception":
+    elif log_level == "ERROR":
 
         app_logger.setLevel(logging.ERROR)
 
@@ -91,7 +80,11 @@ def app_logging():
     app_logger.addHandler(console_streamhandler)
 
     # set level of logging from config
-    if log_level == "INFO":
+    if log_level == "DEBUG":
+
+        console_streamhandler.setLevel(logging.DEBUG)
+
+    elif log_level == "INFO":
 
         console_streamhandler.setLevel(logging.INFO)
 
@@ -99,7 +92,7 @@ def app_logging():
 
         console_streamhandler.setLevel(logging.WARNING)
 
-    elif log_level == "exception":
+    elif log_level == "ERROR":
 
         console_streamhandler.setLevel(logging.ERROR)
 
@@ -284,9 +277,9 @@ def image_url(**kwargs):
     # unpack all keyword args
     if kwargs is not None:
 
-        if "image_json_url_web" in kwargs:
+        if "image_json_url" in kwargs:
 
-            image_json_url_web = kwargs['image_json_url_web']
+            image_json_url = kwargs['image_json_url']
 
         else:
 
@@ -302,9 +295,9 @@ def image_url(**kwargs):
             app_logger_instance.warning(u'No base url config value send to function, exiting function...')
             return 1, None, None
 
-        if "image_hash_config" in kwargs:
+        if "image_hash" in kwargs:
 
-            image_hash_config = kwargs['image_hash_config']
+            image_hash_config = kwargs['image_hash']
 
         else:
 
@@ -326,7 +319,7 @@ def image_url(**kwargs):
         return 1, None, None
 
     # download webpage content
-    return_code, status_code, content = http_client(url=image_json_url_web, user_agent=user_agent_chrome, request_type=request_type)
+    return_code, status_code, content = http_client(url=image_json_url, user_agent=user_agent_chrome, request_type=request_type)
 
     if return_code == 0:
 
@@ -337,12 +330,12 @@ def image_url(**kwargs):
 
         except (ValueError, TypeError, KeyError, IndexError):
 
-            app_logger_instance.info(u"[ERROR] Problem loading json from '%s', skipping to next iteration..." % image_json_url_web)
+            app_logger_instance.error(u"Problem loading json from '%s', skipping to next iteration..." % image_json_url)
             return 1, None, None
 
     else:
 
-        app_logger_instance.info(u"[ERROR] Problem downloading json content from '%s', skipping to new release..." % image_json_url_web)
+        app_logger_instance.error(u"Problem downloading json content from '%s', skipping to new release..." % image_json_url)
         return 1, None, None
 
     try:
@@ -353,36 +346,46 @@ def image_url(**kwargs):
 
     except (ValueError, TypeError, KeyError, IndexError):
 
-        app_logger_instance.info(u"[ERROR] Problem parsing json for image hash from '%s', skipping to next iteration..." % image_json_url_web)
+        app_logger_instance.error(u"Problem parsing json for image hash from '%s', skipping to next iteration..." % image_json_url)
         return 1, None, None
-
-    app_logger_instance.info(u"Image hash value from config is '%s'" % image_hash_config)
-
-    if image_hash_config != image_hash_web:
-
-        app_logger_instance.info(u"Image hashes are different, looks like a new image, continuing to download...")
-
-    else:
-
-        app_logger_instance.info(u"Image hashes match, looks like we already have the image, skipping download")
-        return 2, None, None
 
     try:
 
         # get image url construct
         image_url_base = content['images'][0]['urlbase']
-        app_logger_instance.info(u"Image URL construct is %s" % image_url_base)
+        app_logger_instance.info(u"Image urlbase construct is '%s'" % image_url_base)
 
     except (ValueError, TypeError, KeyError, IndexError):
 
-        app_logger_instance.info(u"[ERROR] Problem parsing json for image url construct from %s, skipping to next iteration..." % image_json_url_web)
+        app_logger_instance.error(u"Problem parsing json for image urlbase from '%s', skipping to next iteration..." % image_json_url)
         return 1, None, None
 
-    # construct full url to image
-    image_download_url_web = u"%s%s_%s.jpg" % (base_url, image_url_base, image_resolution)
-    app_logger_instance.info(u"Image download URL is %s" % image_download_url_web)
+    try:
 
-    return 0, image_hash_web, image_download_url_web
+        # get image copyright (used to get description of image for filename)
+        image_copyright_metadata = content['images'][0]['copyright']
+        app_logger_instance.info(u"Image copyright is '%s'" % image_copyright_metadata)
+
+    except (ValueError, TypeError, KeyError, IndexError):
+
+        app_logger_instance.error(u"Problem parsing json for image copyright from '%s', skipping to next iteration..." % image_json_url)
+        return 1, None, None
+
+    if image_hash_web not in image_hash_config:
+
+        app_logger_instance.info(u"Image hash not found in config.ini, looks like a new image, continuing to download...")
+
+        # construct full url to image
+        image_download_url_web = u"%s%s_%s.jpg" % (base_url, image_url_base, image_resolution)
+        app_logger_instance.info(u"Image download URL is %s" % image_download_url_web)
+
+        app_logger_instance.info(u"Successfully downloaded image metadata")
+        return 0, image_hash_web, image_download_url_web
+
+    else:
+
+        app_logger_instance.info(u"Image hash already in config.ini, looks like we previously downloaded the image, skipping download")
+        return 2, None, None
 
 
 def image_download(**kwargs):
@@ -417,6 +420,15 @@ def image_download(**kwargs):
         else:
 
             app_logger_instance.warning(u'No image country config value sent to function, exiting function...')
+            return 1
+
+        if "image_preferred_country" in kwargs:
+
+            image_preferred_country = kwargs['image_preferred_country']
+
+        else:
+
+            app_logger_instance.warning(u'No preferred image country config value sent to function, exiting function...')
             return 1
 
         if "image_dest_dir" in kwargs:
@@ -456,34 +468,35 @@ def image_download(**kwargs):
 
     if return_code == 0:
 
-        date_now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
-        image_arch_file = u"%s-%s-%s.jpg" % (image_country, date_now, image_hash_web)
+        if image_preferred_country == image_country:
 
-        if not os.path.exists(image_dest_dir):
-            os.makedirs(image_dest_dir)
+            if not os.path.exists(image_dest_dir):
+                os.makedirs(image_dest_dir)
 
-        # construct full path and filename for wallpaper
-        image_dest_path = os.path.join(image_dest_dir, image_dest_file)
-        app_logger_instance.info(u"Location to save the wallpaper image file is %s" % image_dest_path)
+            # construct full path and filename for wallpaper
+            image_dest_path = os.path.join(image_dest_dir, image_dest_file)
+            app_logger_instance.info(u"Location to save the wallpaper image file is %s" % image_dest_path)
+
+            try:
+
+                # write image to wallpaper path
+                download_write = open(image_dest_path, "wb")
+                download_write.write(content)
+                download_write.close()
+
+            except IOError:
+
+                app_logger_instance.error(u"Failed to save preferred image to %s" % image_dest_path)
+                return 1
 
         if not os.path.exists(image_arch_dir):
             os.makedirs(image_arch_dir)
 
         # construct full path and filename for archives
+        date_now = datetime.datetime.now().strftime("%Y%m%d%H%M%S")
+        image_arch_file = u"%s-%s-%s.jpg" % (image_country, date_now, image_hash_web)
         image_arch_path = os.path.join(image_arch_dir, image_arch_file)
         app_logger_instance.info(u"Location to save the archived image file is %s" % image_arch_path)
-
-        try:
-
-            # write image to wallpaper path
-            download_write = open(image_dest_path, "wb")
-            download_write.write(content)
-            download_write.close()
-
-        except IOError:
-
-            app_logger_instance.info(u"[ERROR] Failed to save wallpaper image to %s" % image_dest_path)
-            return 1
 
         try:
 
@@ -494,15 +507,15 @@ def image_download(**kwargs):
 
         except IOError:
 
-            app_logger_instance.info(u"[ERROR] Failed to save archived image to %s" % image_dest_path)
+            app_logger_instance.error(u"Failed to save archived image to %s" % image_arch_path)
             return 1
 
-        # if ok then return success
+        app_logger_instance.info(u"Successfully downloaded image")
         return 0
 
     else:
 
-        app_logger_instance.info(u"[ERROR] Problem downloading image from %s" % image_download_url_web)
+        app_logger_instance.error(u"Problem downloading image from %s" % image_download_url_web)
         return 1
 
 
@@ -511,8 +524,8 @@ def monitor(schedule_check_mins):
     # get base url for website
     base_url = config_obj["website"]["base_url"]
 
-    # get image country of origin
-    image_country = config_obj["image"]["image_country"]
+    # get image preferred country of origin (this will be whats set as wallpaper)
+    image_preferred_country = config_obj["image"]["image_preferred_country"]
 
     # get image resolution
     image_resolution = config_obj["image"]["image_resolution"]
@@ -529,45 +542,41 @@ def monitor(schedule_check_mins):
     image_arch_dir = config_obj["image"]["image_arch_dir"]
     image_arch_dir = os.path.normpath(image_arch_dir)
 
-    try:
+    # get image hash value from config.ini
+    image_hash = config_obj["image"]["image_hash"]
 
-        # get image hash value from config.ini
-        image_hash_config = config_obj["image"]["image_hash_%s" % image_country]
+    # get list of allowed countries from config.ini
+    image_allowed_country = config_obj["image"]["image_allowed_country"]
 
-    except KeyError:
+    # loop over list of allowed countries to download images from
+    for image_country in image_allowed_country:
 
-        # if the key doesnt exist (first run for this country?) then create config.ini key
-        image_hash_config = ""
+        # construct url for bing json (used to get url for image)
+        image_json_url = u"%s/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=%s" % (base_url, image_country)
+        app_logger_instance.info(u"Image json download URL is '%s'" % image_json_url)
 
-        # write hash to config.ini (used to compare on next run)
-        config_obj["image"]["image_hash_%s" % image_country] = ""
-        config_obj.write()
-
-    # construct url for bing json (used to get url for image)
-    image_json_url_web = u"%s/HPImageArchive.aspx?format=js&idx=0&n=1&mkt=%s" % (base_url, image_country)
-    app_logger_instance.info(u"Image json download URL is '%s'" % image_json_url_web)
-
-    # run function to get hash of image file
-    return_code, image_hash_web, image_download_url_web = image_url(image_json_url_web=image_json_url_web, base_url=base_url, image_hash_config=image_hash_config, image_resolution=image_resolution)
-
-    if return_code == 0:
-
-        # run function to download image file
-        return_code = image_download(image_download_url_web=image_download_url_web, image_country=image_country, image_hash_web=image_hash_web, image_dest_dir=image_dest_dir, image_dest_file=image_dest_file, image_arch_dir=image_arch_dir)
+        # run function to get metadata from bing json
+        return_code, image_hash_web, image_download_url_web = image_url(image_json_url=image_json_url, base_url=base_url, image_hash=image_hash, image_resolution=image_resolution)
 
         if return_code == 0:
 
-            # write hash to config.ini (used to compare on next run)
-            config_obj["image"]["image_hash_%s" % image_country] = image_hash_web
-            config_obj.write()
+            # run function to download image using metadata to construct url
+            return_code = image_download(image_download_url_web=image_download_url_web, image_country=image_country, image_preferred_country=image_preferred_country, image_hash_web=image_hash_web, image_dest_dir=image_dest_dir, image_dest_file=image_dest_file, image_arch_dir=image_arch_dir)
 
-            app_logger_instance.info(u"[SUCCESS] All images processed")
+            if return_code == 0:
 
-    app_logger_instance.info(u"Waiting for next invocation in %s minutes..." % schedule_check_mins)
+                # append hash value to list in config.ini (used to skip already downloaded images on next run)
+                image_hash.append(image_hash_web)
+                config_obj["image"]["image_hash"] = image_hash
+                config_obj.write()
 
-    # write timestamp to config.ini
-    config_obj["general"]["last_check"] = time.strftime("%c")
-    config_obj.write()
+                app_logger_instance.info(u"All images processed")
+
+        app_logger_instance.info(u"Waiting for next invocation in %s minutes..." % schedule_check_mins)
+
+        # write timestamp to config.ini
+        config_obj["general"]["last_check"] = time.strftime("%c")
+        config_obj.write()
 
 
 def scheduler_start():
@@ -589,7 +598,7 @@ def scheduler_start():
 
         except KeyboardInterrupt:
 
-            app_logger_instance.info(u"Keyboard interrupt received, exiting script...")
+            app_logger_instance.warning(u"Keyboard interrupt received, exiting script...")
             sys.exit()
 
 
