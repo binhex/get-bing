@@ -39,7 +39,7 @@ def app_logging():
     log_level = config_obj["general"]["log_level"]
 
     # setup formatting for log messages
-    app_formatter = logging.Formatter("%(asctime)s %(levelname)s %(threadName)s %(module)s %(funcName)s :: %(message)s")
+    app_formatter = logging.Formatter("%(asctime)s %(threadName)s %(module)s %(funcName)s :: [%(levelname)s] %(message)s")
 
     # setup logger for app
     app_logger = logging.getLogger("app")
@@ -624,6 +624,9 @@ if __name__ == '__main__':
     logs_dir = os.path.join(app_root_dir, u"logs")
     logs_dir = os.path.normpath(logs_dir)
 
+    # set path to pdfile
+    pidfile = u'/var/run/get-bing.pid'
+
     # set path for log file
     app_log_file = os.path.join(logs_dir, u"app.log")
 
@@ -634,10 +637,6 @@ if __name__ == '__main__':
     create_config()
 
     user_agent_chrome = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_11_4) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/49.0.2623.112 Safari/537.36"
-
-    app_log = app_logging()
-    app_logger_instance = app_log.get('logger')
-    app_handler = app_log.get('handler')
 
     # custom argparse to redirect user to help if unknown argument specified
     class ArgparseCustom(argparse.ArgumentParser):
@@ -653,12 +652,43 @@ if __name__ == '__main__':
     # add argparse command line flags
     commandline_parser.add_argument(u"--config", metavar=u"<path>", help=u"specify path for config file e.g. --config /opt/get-bing/config/")
     commandline_parser.add_argument(u"--logs", metavar=u"<path>", help=u"specify path for log files e.g. --logs /opt/get-bing/logs/")
-    commandline_parser.add_argument(u"--pidfile", metavar=u"<path>", help=u"specify path to pidfile e.g. --pid /var/run/get-bing/get-bing.pid")
+    commandline_parser.add_argument(u"--pidfile", metavar=u"<path>", help=u"specify path to pidfile e.g. --pid /var/run/get-bing.pid")
     commandline_parser.add_argument(u"--daemon", action=u"store_true", help=u"run as daemonized process")
     commandline_parser.add_argument(u"--version", action=u"version", version=version)
 
     # save arguments in dictionary
     args = vars(commandline_parser.parse_args())
+
+    # if dirs specified via command line then set to use this, create if not exists
+    if args["config"]:
+
+        config_dir = args["config"]
+
+    if not os.path.exists(config_dir):
+
+        os.makedirs(config_dir)
+
+    if args["logs"]:
+
+        logs_dir = args["logs"]
+
+    if not os.path.exists(logs_dir):
+
+        os.makedirs(logs_dir)
+
+    if args["pidfile"]:
+
+        pidfile = args["pidfile"]
+
+    pid_path = os.path.dirname(pidfile)
+
+    if not os.path.exists(pid_path):
+
+        os.makedirs(pid_path)
+
+    app_log = app_logging()
+    app_logger_instance = app_log.get('logger')
+    app_handler = app_log.get('handler')
 
     # check os is not windows and then run main process as daemonized process
     if args["daemon"] is True and os.name != "nt":
