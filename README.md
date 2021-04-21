@@ -1,6 +1,6 @@
 **Application**
 
-Python script 
+Python script
 
 **Description**
 
