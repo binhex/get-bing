@@ -606,9 +606,9 @@ def scheduler_start():
 if __name__ == '__main__':
 
     app_name = "Get-Bing"
-    version = "1.0.0"
+    version = "2.0.0"
 
-    app_root_dir = os.path.dirname(os.path.realpath(__file__)).decode("utf-8")
+    app_root_dir = os.path.dirname(os.path.realpath(__file__))
 
     # set folder path for config files
     config_dir = os.path.join(app_root_dir, u"configs")
