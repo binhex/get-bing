@@ -4,7 +4,7 @@ chardet==5.0.0
 charset-normalizer==2.1.1
 configobj==5.0.6
 docutils==0.19
-idna==3.4
+idna==3.7
 lockfile==0.12.2
 pex==2.1.105
 python-daemon==2.3.1
