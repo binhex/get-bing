@@ -11,4 +11,4 @@ python-daemon==2.3.1
 requests==2.32.0
 schedule==1.1.0
 six==1.16.0
-urllib3==1.26.18
+urllib3==1.26.19
